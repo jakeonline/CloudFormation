@@ -1,0 +1,99 @@
+Parameters:
+  NameOfService:
+    Description: "The name of the service that this stack is to be used for"
+    Type: String
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access into the server
+    Type: AWS::EC2::KeyPair::KeyName
+  VpcId:
+    Description: Enter the VPC ID
+    Type: AWS::EC2::VPC::Id
+  SubnetId:
+    Description: Enter the Subnet ID
+    Type: AWS::EC2::Subnet::Id
+Mappings:
+    RegionMap:
+      us-east-1:
+        AMI: ami-1853ac65
+      us-west-1:
+        AMI: ami-bf5540df
+      eu-west-1:
+        AMI: ami-3bfab942
+      ap-southeast-1:
+        AMI: ami-e2adf99e
+      ap-southeast-2:
+        AMI: ami-43874721 # Amazon Linux AMI in Sydney
+Resources:
+  Ec2Instance:
+    Type: "AWS::EC2::Instance"
+    Metadata: 
+      AWS::CloudFormation::Init:
+        config:
+          packages:
+            yum:
+              httpd: []
+              php: []
+          files:
+            /var/www/html/index.php:
+              content: !Sub |
+                <?php print "Hello world Jake was here!"; ?>
+          services:
+            sysvinit:
+              httpd:
+                enabled: true
+                ensureRunning: true
+    Properties:
+      InstanceType: t2.micro
+      ImageId: 
+        Fn::FindInMap:
+          - RegionMap
+          - !Ref AWS::Region
+          - AMI
+      SecurityGroupIds: 
+        - !Ref MySecurityGroup
+      SubnetId: !Ref SubnetId
+      Tags:
+        - Key: "Name"
+          Value: !Join 
+            - ""
+            - - "EC2 Instance for "
+              - !Ref AWS::Region
+              - " (via PseudoParameter AWS::Region)"
+        - Key: Organisation
+          Value: !Join [" ", [Odsinada, Tech, Consulting]]
+        - Key: Topic
+          Value: !Join [" ", [CloudFormation, Mappings]]
+        - Key: Functionality
+          Value: !Join [" ", [Input, Parameters]]
+        - Key: Name Of Service
+          Value: !Ref NameOfService
+      KeyName: !Ref KeyName
+      UserData:
+        'Fn::Base64':
+          !Sub |
+            #!/bin/bash -xe
+            # ensure AWS CFN Bootstrap is the latest
+            yum install -y aws-cfn-bootstrap
+            # Install the files and packages from the metadata
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource Ec2Instance --region ${AWS::Region}
+  MySecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: !Join [" ", [Open, Port, 80, for, website]]
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VpcId
+Outputs:
+  ServerDns:
+    Value: !GetAtt
+      - Ec2Instance
+      - PublicDnsName
+  ServerIp:
+    Value: !Sub ${Ec2Instance.PublicIp}
+  Website:
+    Description: The Public DNS for the EC2 Instance
+    Value: !Sub |
+      http://${Ec2Instance.PublicDnsName}
